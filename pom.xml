@@ -6,7 +6,7 @@
 
     <groupId>io.github.ithamal</groupId>
     <artifactId>itio</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.2</version>
     <name>itio</name>
     <description>entity data cache framework</description>
     <url>https://github.com/ithamal/itio</url>
@@ -29,7 +29,6 @@
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
             <version>4.1.99.Final</version>
-            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.slf4j</groupId>

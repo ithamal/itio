@@ -1,40 +1,54 @@
+### itio
+居于Netty的高性能非阻塞IO框架
+
 ### Maven 依赖
 ```xml
     <groupId>io.github.ithamal</groupId>
     <artifactId>itio</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.2</version>
 ```
 
 ### 特性
 - 简化netty框架的客户端和服务器端操作
-- 支持客户端同步读取消息
+- 支持连接池、流控、握手等机制
+- 支持客户端同步模式
 
 ### 客户端示例
 ```java
- ItioClient client = new ItioClient();
+ItioClient client = new ItioClientImpl();
 client.setLogging(true);
-client.registerCodecHandler(new HttpClientCodec());
-client.registerCodecHandler(new HttpObjectAggregator(8192));
-client.connect("www.qq.com", 80);
-System.out.println("已连接");
+client.registerCodecHandler(ch -> new HttpClientCodec());
+client.registerCodecHandler(ch -> new HttpObjectAggregator(8192));
+client.registerBizHandler(ch -> new ChannelInboundHandlerAdapter() {
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+          super.channelRead(ctx, msg);
+    }
+});
+client.setAddress("www.qq.com", 80);
+client.setPoolSetting(new PoolSetting().minimumSize(5));
+client.initialize();
+Connection connection = client.getConnection();
+System.out.println("已连接：" + connection.isAlive());
 HttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_0, HttpMethod.GET, "/");
 request.headers().set("Host", "www.qq.com");
-client.writeAndFlush(request).sync();
-System.out.println("已请求");
 try {
-    FullHttpResponse response = client.waitForResponse(FullHttpResponse.class, 10, TimeUnit.SECONDS);
+    System.out.println("已请求");
+    FullHttpResponse response = connection.writeForResponse(request, FullHttpResponse.class).get();
+    System.out.println("已响应");
     System.out.println(response);
     System.out.println(response.content().toString(StandardCharsets.UTF_8));
     response.release();
 } finally {
-    client.disconnect();
+    connection.close().syncUninterruptibly();
+    client.shutdown(10, TimeUnit.SECONDS);
     System.out.println("已关闭");
 }
 ```
 
 ### 服务器端示例
 ```java
-ItioServer server = new ItioServer();
+ItioServer server = new ItioServerImpl();
 server.setLogging(true);
 server.registerCodecHandler(ch -> new HttpServerCodec());
 server.registerCodecHandler(ch -> new HttpObjectAggregator(1024 * 1024));

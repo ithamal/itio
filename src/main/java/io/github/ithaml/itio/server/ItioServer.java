@@ -1,133 +1,106 @@
 package io.github.ithaml.itio.server;
 
-import io.github.ithaml.itio.handler.provider.ChannelHandlerProvider;
-import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.*;
-import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.logging.LoggingHandler;
-import lombok.Getter;
-import lombok.Setter;
-
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import io.github.ithaml.itio.handler.ChannelHandlerProvider;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.ServerChannel;
+import io.netty.util.concurrent.Future;
 
 /**
  * @author: ken.lin
  * @since: 2023-09-30 14:50
  */
-public class ItioServer {
+public interface ItioServer {
 
-    private Channel channel;
-
-    private EventLoopGroup bossGroup;
-
-    private EventLoopGroup workerGroup;
-
-    private final Map<ChannelOption, Object> optionsMap = new HashMap<>();
-
-    private final List<ChannelHandlerProvider> codecHandlerProviders = new ArrayList<>();
-
-    private final List<ChannelHandlerProvider> bizHandlerProviders = new ArrayList<>();
+    /**
+     * 信道类，默认NIO
+     * @param channelClass 信道类型
+     */
+    void setChannelClass(Class<? extends ServerChannel> channelClass);
 
     /**
      * 是否开启日志
+     * @param isLogging 是否开启
      */
-    @Getter
-    @Setter
-    private boolean isLogging;
+    void setLogging(boolean isLogging);
 
     /**
-     * 设置IO线程数量
+     * 主执行器，建议设置为1
+     * @param eventLoopGroup 执行器
      */
-    @Getter @Setter
-    private int ioThreads = Runtime.getRuntime().availableProcessors() * 2;
+    void setBossEventLoopGroup(EventLoopGroup eventLoopGroup);
 
     /**
-     * 设置选项参数
-     * @param option 选项参数
-     * @param value 参数值
-     * @param <T> 参数值类型
+     * IO执行器，设置核心线程数，可以设置为CPU核心数的N倍，N的取值范围为1到3
+     * @param eventLoopGroup 执行器
      */
-    public <T> void option(ChannelOption<T> option, T value) {
-        optionsMap.put(option, value);
-    }
+    void setWorkEventLoopGroup(EventLoopGroup eventLoopGroup);
 
     /**
-     * 长时间保持连接
-     */
-    public void setKeepAlive() {
-        optionsMap.put(ChannelOption.SO_KEEPALIVE, true);
-    }
-
-    /**
-     * 注册编码处理器，按顺序添加到最后
+     * 配置项
      *
-     * @param provider 处理器提供者
+     * @param option
+     * @param value
+     * @param <T>
      */
-    public void registerCodecHandler(ChannelHandlerProvider provider) {
-        codecHandlerProviders.add(provider);
-    }
-
+    <T> void option(ChannelOption<T> option, T value);
 
     /**
-     * 注册业务处理器，按顺序添加到最后
+     * 是否保留存活
      *
-     * @param provider 处理器提供者
+     * @param value
      */
-    public void registerBizHandler(ChannelHandlerProvider provider) {
-        bizHandlerProviders.add(provider);
-    }
-
+    void setKeepAlive(boolean value);
 
     /**
-     * 开始监听
+     * 注册编码处理器
      *
-     * @param port 端口
+     * @param provider 处理器
      */
-    public void listen(int port) {
-        bossGroup = new NioEventLoopGroup(1);
-        workerGroup = new NioEventLoopGroup(ioThreads);
-        ServerBootstrap bootstrap = new ServerBootstrap();
-        bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class);
-        optionsMap.forEach(bootstrap::option);
-        bootstrap.childHandler(new ChannelInitializer<Channel>() {
-            @Override
-            protected void initChannel(Channel ch) throws Exception {
-                // 编码处理
-                for (ChannelHandlerProvider provider : codecHandlerProviders) {
-                    ChannelHandler handler = provider.getHandler(ch);
-                    if (handler != null) {
-                        ch.pipeline().addLast(handler);
-                    }
-                }
-                // 日志
-                if (isLogging) {
-                    ch.pipeline().addLast(new LoggingHandler());
-                }
-                // 业务处理器
-                for (ChannelHandlerProvider provider : bizHandlerProviders) {
-                    ChannelHandler handler = provider.getHandler(ch);
-                    if (handler != null) {
-                        ch.pipeline().addLast(handler);
-                    }
-                }
-            }
-        });
-        channel = bootstrap.bind(port).syncUninterruptibly().channel();
-    }
+    void registerCodecHandler(ChannelHandlerProvider provider);
 
     /**
-     *  停止监听
+     * 注册业务处理器，用于异步处理
+     *
+     * @param provider 处理器
      */
-    public void shutdown() {
-        try {
-            channel.close().syncUninterruptibly();
-        } finally {
-            bossGroup.shutdownGracefully();
-            workerGroup.shutdownGracefully();
-        }
-    }
+    void registerBizHandler(ChannelHandlerProvider provider);
+
+    /**
+     * 流控处理器
+     *
+     * @param provider
+     */
+    void registerRateLimitHandler(ChannelHandlerProvider provider);
+
+    /**
+     * 握手处理器, 应用有状态(长)连接程序；短连接程序不建议使用
+     * @param handshake
+     */
+    void setHandshake(Handshake handshake);
+
+    /**
+     * 连接管理器, 应用有状态(长)连接程序；管理握手后的连接
+     * @return
+     */
+    ConnectionManager getConnectionManger();
+
+    /**
+     * 初始化，如果不手动初始化，将在listen时自动初始化
+     */
+    void initialize();
+
+    /**
+     * 连接
+     * @param port
+     */
+    Future listen(int port);
+
+
+    /**
+     * 停止连接
+     * @return 响应
+     */
+    Future shutdown();
 }

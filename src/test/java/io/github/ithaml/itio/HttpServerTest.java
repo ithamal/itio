@@ -1,10 +1,11 @@
 package io.github.ithaml.itio;
 
+import io.github.ithaml.itio.concurrent.impl.LeakyBucketRateLimiter;
+import io.github.ithaml.itio.handler.ClientSideRateLimitHandler;
+import io.github.ithaml.itio.handler.ServerSideRateLimitHandler;
 import io.github.ithaml.itio.server.ItioServer;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
+import io.github.ithaml.itio.server.impl.ItioServerImpl;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.*;
 import io.netty.util.CharsetUtil;
@@ -22,10 +23,11 @@ public class HttpServerTest {
     @Test
     @SneakyThrows
     public void test() {
-        ItioServer server = new ItioServer();
+        ItioServer server = new ItioServerImpl();
         server.setLogging(true);
         server.registerCodecHandler(ch -> new HttpServerCodec());
         server.registerCodecHandler(ch -> new HttpObjectAggregator(1024 * 1024));
+        server.registerRateLimitHandler(ch -> new ServerSideRateLimitHandler(new LeakyBucketRateLimiter(ch.eventLoop(),1)));
         // 业务处理
         server.registerBizHandler(ch->new SimpleChannelInboundHandler<FullHttpRequest>() {
             @Override
@@ -38,10 +40,10 @@ public class HttpServerTest {
                 ctx.writeAndFlush(response);
             }
         });
-        server.listen(8080);
+        server.listen(8081).syncUninterruptibly();
         System.out.println("已启动监听");
-        TimeUnit.SECONDS.sleep(30);
-        server.shutdown();
+        TimeUnit.SECONDS.sleep(1000);
+        server.shutdown().syncUninterruptibly();
         System.out.println("已停止服务");
     }
 }
